@@ -168,6 +168,8 @@ class MooncakeStoreConnectorV1Scheduler:
             "consumer_is_to_load", False)
         self.load_async = vllm_config.kv_transfer_config.kv_connector_extra_config.get(
             "load_async", False)
+        mode = "async" if self.load_async else "sync"
+        logger.info("MooncakeStoreConnectorV1 load mode: %s", mode)
         # request_id -> (vllm cached tokes, mooncake cached tokens)
         self.load_specs: dict[str, LoadSpec] = {}
         self._block_size = vllm_config.cache_config.block_size
