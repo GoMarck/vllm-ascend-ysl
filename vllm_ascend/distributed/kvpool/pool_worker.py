@@ -16,6 +16,8 @@ from vllm_ascend.distributed.kvpool.backend.memcache_backend import \
     MemcacheBackend
 from vllm_ascend.distributed.kvpool.backend.mooncake_backend import \
     MooncakeBackend
+from vllm_ascend.distributed.kvpool.backend.yuanrong_backend import \
+    YuanrongBackend
 from vllm_ascend.distributed.kvpool.config_data import (
     AscendConnectorMetadata, ChunkedTokenDatabase, KeyMetadata,
     LasyerMultiBlockReqMeta, ReqMeta)
@@ -26,6 +28,7 @@ from vllm_ascend.distributed.kvpool.kv_transfer import (
 backend_map: Dict[str, Type[Backend]] = {
     "mooncake": MooncakeBackend,
     "memcache": MemcacheBackend,
+    "yuanrong": YuanrongBackend,
 }
 
 
