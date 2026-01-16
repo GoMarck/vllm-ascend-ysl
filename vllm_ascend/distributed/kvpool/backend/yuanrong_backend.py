@@ -10,6 +10,30 @@ from vllm.utils import split_host_port
 from vllm_ascend.distributed.kvpool.backend.backend import Backend
 
 
+def split_host_port(addr, default_port=None):
+    """
+    Splits an address string into (host, port).
+    Supports formats: '127.0.0.1:80', 'localhost:8080', '192.168.1.1'
+    Note: This version is designed for IPv4 and hostnames only.
+    """
+    if ":" in addr:
+        # Split from the right side exactly once to separate host and port
+        host, port_str = addr.rsplit(":", 1)
+        try:
+            port = int(port_str)
+        except ValueError:
+            # If the part after the colon is not a valid integer, 
+            # treat the entire string as the host.
+            host = addr
+            port = default_port
+    else:
+        # No colon found, return host with the default port
+        host = addr
+        port = default_port
+        
+    return host, port
+
+
 class YuanrongBackend(Backend):
 
     _DS_KEY_MAX_LEN = 255
