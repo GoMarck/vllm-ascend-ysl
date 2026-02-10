@@ -363,3 +363,92 @@ Long question:
 ```shell
 curl -s http://localhost:8100/v1/completions -H "Content-Type: application/json" -d '{ "model": "/xxxxx/Qwen2.5-7B-Instruct", "prompt": "Given the accelerating impacts of climate change—including rising sea levels, increasing frequency of extreme weather events, loss of biodiversity, and adverse effects on agriculture and human health—there is an urgent need for a robust, globally coordinated response. However, international efforts are complicated by a range of factors: economic disparities between high-income and low-income countries, differing levels of industrialization, varying access to clean energy technologies, and divergent political systems that influence climate policy implementation. In this context, how can global agreements like the Paris Accord be redesigned or strengthened to not only encourage but effectively enforce emission reduction targets? Furthermore, what mechanisms can be introduced to promote fair and transparent technology transfer, provide adequate financial support for climate adaptation in vulnerable regions, and hold nations accountable without exacerbating existing geopolitical tensions or disproportionately burdening those with historically lower emissions?", "max_completion_tokens": 256, "temperature":0.0 }'
 ```
+
+## Example of using Yuanrong as a KV Pool backend
+
+* Software:
+  * Install openyuanrong-datasystem on all nodes (yr.datasystem must be importable).
+
+### Install Yuanrong Datasystem
+
+```bash
+pip install openyuanrong-datasystem
+```
+
+### Start etcd
+
+Yuanrong Datasystem requires etcd for service discovery. Start a single-node
+etcd cluster:
+
+```bash
+ETCD_VERSION="v3.5.12"
+ETCD_ARCH="linux-arm64"
+wget https://github.com/etcd-io/etcd/releases/download/${ETCD_VERSION}/etcd-${ETCD_VERSION}-${ETCD_ARCH}.tar.gz
+tar -xvf etcd-${ETCD_VERSION}-${ETCD_ARCH}.tar.gz
+cd etcd-${ETCD_VERSION}-${ETCD_ARCH}
+sudo cp etcd etcdctl /usr/local/bin/
+
+etcd \
+  --name etcd-single \
+  --data-dir /tmp/etcd-data \
+  --listen-client-urls http://0.0.0.0:2379 \
+  --advertise-client-urls http://0.0.0.0:2379 \
+  --listen-peer-urls http://0.0.0.0:2380 \
+  --initial-advertise-peer-urls http://0.0.0.0:2380 \
+  --initial-cluster etcd-single=http://0.0.0.0:2380 &
+
+etcdctl --endpoints "127.0.0.1:2379" put key "value"
+etcdctl --endpoints "127.0.0.1:2379" get key
+```
+
+For production environments, refer to the official etcd clustering
+documentation: https://etcd.io/docs/current/op-guide/clustering/
+
+### Start Datasystem Worker
+
+Start a Datasystem worker on each node using dscli:
+
+```bash
+dscli start -w \
+  --worker_address "${WORKER_IP}:31501" \
+  --etcd_address "${ETCD_IP}:2379" \
+  --shared_memory_size_mb 20480
+```
+
+To stop the worker:
+
+```bash
+dscli stop --worker_address "${WORKER_IP}:31501"
+```
+
+### Environment Variable Configuration
+
+```bash
+export PYTHONHASHSEED=0
+export YUANRONG_DS_WORKER_ADDR="${WORKER_IP}:31501"
+```
+
+### Run AscendStoreConnector with Yuanrong backend
+
+```bash
+python3 -m vllm.entrypoints.openai.api_server \
+    --model /xxxxx/Qwen2.5-7B-Instruct \
+    --port 8100 \
+    --trust-remote-code \
+    --enforce-eager \
+    --no_enable_prefix_caching \
+    --tensor-parallel-size 1 \
+    --data-parallel-size 1 \
+    --max-model-len 10000 \
+    --block-size 128 \
+    --max-num-batched-tokens 4096 \
+    --kv-transfer-config \
+    '{
+    "kv_connector": "AscendStoreConnector",
+    "kv_role": "kv_both",
+    "kv_connector_extra_config": {
+        "lookup_rpc_port":"1",
+        "backend": "yuanrong"
+    }
+}'
+```
