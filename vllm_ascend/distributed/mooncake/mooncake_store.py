@@ -17,6 +17,8 @@ from .config_data import MooncakeStoreConfig
 
 METADATA_BYTES_LEN = 24
 BASE_PORT = int(os.getenv("VLLM_BASE_PORT", "8790"))
+_DEBUG_LOG = bool(os.getenv("DS_DEBUG_LOG", False))
+_ENBALE_RH2D = bool(os.getenv("DS_ENABLE_RH2D", False))
 _DS_KEY_ALLOWED_RE = re.compile(
     r"^[a-zA-Z0-9\-_!@#%\^\*\(\)\+\=\:;]*$")
 _DS_KEY_SANITIZE_RE = re.compile(r"[^a-zA-Z0-9\-_!@#%\^\*\(\)\+\=\:;]")
@@ -106,7 +108,8 @@ class Mooncakestore():
             raise ValueError(
                 "DS_WORKER_ADDR is not set for datasystem backend.")
         host, port = split_host_port(worker_addr)
-        self._ds_client = HeteroClient(host, int(port))
+        logger.info(f"Enable RH2D: {_ENBALE_RH2D}")
+        self._ds_client = HeteroClient(host, int(port), enable_remote_h2d=_ENBALE_RH2D)
         self._ds_client.init()
         self._ds_blob_cls = Blob
         self._ds_blob_list_cls = DeviceBlobList
@@ -169,6 +172,8 @@ class Mooncakestore():
                 key_str = key.to_string()
                 res = self._ds_client.exist(
                     self._normalize_ds_keys([key_str]))
+                if _DEBUG_LOG:
+                    logger.info(f"exists: {key_str}:{res[0]}")
                 return bool(res[0]) if res else False
             except Exception as e:
                 logger.error(f"Failed to check key {key.to_string()}: {e}")
@@ -182,6 +187,9 @@ class Mooncakestore():
             try:
                 ds_keys = self._normalize_ds_keys(keys)
                 exists = self._ds_client.exist(ds_keys)
+                if _DEBUG_LOG:
+                    output = "batch_exists: " + ", ".join([f"{a}:{b}" for a, b in zip(ds_keys, exists)])
+                    logger.info(output)
                 return [1 if value else 0 for value in exists]
             except Exception as e:
                 logger.error(f"Failed to check keys {keys}: {e}")
@@ -209,6 +217,9 @@ class Mooncakestore():
                     ds_keys, blob_lists, 0)
                 failed_set = set(failed_keys)
                 res = [0 if key not in failed_set else -1 for key in ds_keys]
+                if _DEBUG_LOG:
+                    output = "get_batch: " + ", ".join([f"{a}:{b}" for a, b in zip(ds_keys, res)])
+                    logger.info(output)
                 return res
             except Exception as e:
                 logger.error(f"Failed to get key {keys}. {e}")
@@ -241,6 +252,9 @@ class Mooncakestore():
                 ]
                 self._ds_client.mset_d2h(ds_keys, blob_lists,
                                          self._ds_set_param)
+                if _DEBUG_LOG:
+                    output = "put_batch: " + ", ".join([f"{a}" for a in ds_keys])
+                    logger.info(output)
             except Exception as e:
                 logger.error(f"Failed to put key {keys},error:{e}")
             finally:
@@ -279,6 +293,8 @@ class Mooncakestore():
                 if failed_keys:
                     logger.error(f"Failed to get key: [{key_str}] .")
                     return [-1]
+                if _DEBUG_LOG:
+                    logger.info("get: {ds_key}")
                 return [expect_res]
             except Exception:
                 logger.error(f"Failed to get key: [{key_str}] .")
@@ -334,6 +350,8 @@ class Mooncakestore():
                 ds_key = self._normalize_ds_key(key_str)
                 self._ds_client.mset_d2h([ds_key], [blob_list],
                                          self._ds_set_param)
+                if _DEBUG_LOG:
+                    logger.info("put: {ds_key}")
                 return [0]
             except Exception:
                 logger.error(f"Failed to put key {key_str}.")
